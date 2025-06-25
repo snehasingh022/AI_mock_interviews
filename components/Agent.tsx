@@ -1,5 +1,6 @@
 'use client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import VapiClient from '@vapi-ai/web';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
@@ -12,71 +13,79 @@ enum CallStatus {
 }
 
 interface SavedMessage {
-  role: 'user' | 'system' | 'assistant';
-  content: string;
+  role: string;
+  text: string;
 }
 
 interface AgentProps {
   userName: string;
   userId: string;
-  type: string;
 }
 
 const Agent = ({ userName, userId }: AgentProps) => {
   const router = useRouter();
+  const [vapi, setVapi] = useState<any | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
   const [messages, setMessages] = useState<SavedMessage[]>([]);
+
+  const publicKey = process.env.NEXT_PUBLIC_VAPI_WEB_TOKEN || '';
+  const assistantId = process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID || '';
 
   useEffect(() => {
     if (callStatus === CallStatus.FINISHED) router.push('/');
   }, [callStatus, router]);
 
-  const handleCall = async () => {
-    try {
-      setCallStatus(CallStatus.CONNECTING);
+  useEffect(() => {
+    const vapiInstance = new VapiClient(publicKey);
+    setVapi(vapiInstance);
 
-      const response = await fetch('/api/vapi-start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflowId: process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID,
-          variableValues: {
-            userid: userId,
-            username: userName,
-          },
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Unknown error');
-      }
-
-      console.log('✅ Call started via backend:', result);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Voice call started...' },
-      ]);
+    vapiInstance.on('call-start', () => {
       setCallStatus(CallStatus.ACTIVE);
-    } catch (error) {
-      console.error('❌ Error starting voice call:', error);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: 'Failed to start voice call.' },
-      ]);
-      setCallStatus(CallStatus.INACTIVE);
+    });
+
+    vapiInstance.on('call-end', () => {
+      setCallStatus(CallStatus.FINISHED);
+      setIsSpeaking(false);
+    });
+
+    vapiInstance.on('speech-start', () => {
+      setIsSpeaking(true);
+    });
+
+    vapiInstance.on('speech-end', () => {
+      setIsSpeaking(false);
+    });
+
+    vapiInstance.on('message', (message: any) => {
+      if (message.type === 'transcript') {
+        setMessages(prev => [...prev, { role: message.role, text: message.transcript }]);
+      }
+    });
+
+    vapiInstance.on('error', (err: any) => {
+      setMessages(prev => [...prev, { role: 'system', text: 'Vapi error: ' + err.message }]);
+    });
+
+    return () => {
+      vapiInstance.stop();
+    };
+  }, [publicKey]);
+
+  const startCall = () => {
+    if (vapi) {
+      vapi.start(assistantId);
     }
   };
 
-  const handleDisconnect = () => {
-    setCallStatus(CallStatus.FINISHED);
+  const endCall = () => {
+    if (vapi) {
+      vapi.stop();
+    }
   };
 
-  const latestMessage = messages[messages.length - 1]?.content;
-  const isCallInactiveOrFinished =
-    callStatus === CallStatus.INACTIVE || callStatus === CallStatus.FINISHED;
+  const latestMessage = messages[messages.length - 1]?.text;
+  const isCallInactiveOrFinished = callStatus === CallStatus.INACTIVE || callStatus === CallStatus.FINISHED;
 
   return (
     <>
@@ -106,7 +115,7 @@ const Agent = ({ userName, userId }: AgentProps) => {
       {messages.length > 0 && (
         <div className="transcript-border">
           <div className="transcript">
-            <p key={latestMessage} className={cn('transition-opacity duration-500 opacity-0', 'animate-fadeIn opacity-100')}>
+            <p className={cn('transition-opacity duration-500 opacity-0', 'animate-fadeIn opacity-100')}>
               {latestMessage}
             </p>
           </div>
@@ -114,13 +123,13 @@ const Agent = ({ userName, userId }: AgentProps) => {
       )}
 
       <div className="w-full flex justify-center">
-        {callStatus !== CallStatus.ACTIVE ? (
-          <button className="relative btn-call" onClick={handleCall}>
+        {!callStatus || callStatus !== CallStatus.ACTIVE ? (
+          <button className="relative btn-call" onClick={startCall}>
             <span className={cn('absolute animate-ping rounded-full opacity-75', callStatus !== CallStatus.CONNECTING && 'hidden')} />
             <span>{isCallInactiveOrFinished ? 'Call' : '...'}</span>
           </button>
         ) : (
-          <button className="btn-disconnect" onClick={handleDisconnect}>
+          <button className="btn-disconnect" onClick={endCall}>
             End
           </button>
         )}
