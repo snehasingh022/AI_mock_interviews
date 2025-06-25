@@ -1,8 +1,9 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import Vapi from '@vapi-ai/web';
 
 enum CallStatus {
   INACTIVE = 'INACTIVE',
@@ -27,13 +28,7 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
   const [messages, setMessages] = useState<SavedMessage[]>([]);
-
-  useEffect(() => {
-    // Setup event listeners for vapi events if you use the vapi SDK instance in the frontend (optional)
-    // Omitted here because vapi instance is used server side for start()
-
-    // You can implement this part if you use vapi client SDK for streaming events
-  }, []);
+  const vapiRef = useRef<any>(null);
 
   useEffect(() => {
     if (callStatus === CallStatus.FINISHED) router.push('/');
@@ -42,29 +37,49 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
   const handleCall = async () => {
     try {
       setCallStatus(CallStatus.CONNECTING);
-      const workflowId = "4e681bd6-fc85-4f71-b036-1d33adac9723";
 
-      const res = await fetch('/api/vapi-start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflowId, variableValues: { username: userName, userid: userId } }),
+      const vapi = new Vapi({
+        apiKey: process.env.NEXT_PUBLIC_VAPI_WEB_TOKEN!,
+      });
+      vapiRef.current = vapi;
+
+      vapi.start({
+        agentId: process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!,
+        customer: {
+          name: userName,
+        },
+        variables: {
+          userid: userId,
+          username: userName,
+        },
       });
 
-      const data = await res.json();
+      vapi.on('function-call', async (fnCall: { name: string; args: { userid: string } }) => {
+        if (fnCall.name === 'getInterviewQuestions') {
+          const res = await fetch(`/api/get-questions?userid=${fnCall.args.userid}`);
+          const data = await res.json();
+          vapi.functionCallResult(fnCall.name, data);
+        }
+      });
 
-      if (!data.success) throw new Error(data.error);
+      vapi.on('message', (message: { content: string }) => {
+        setMessages((prev) => [...prev, { role: 'assistant', content: message.content }]);
+        setIsSpeaking(true);
+        setTimeout(() => setIsSpeaking(false), 1500);
+      });
 
-      console.log('✅ Workflow started successfully', data.result);
       setCallStatus(CallStatus.ACTIVE);
     } catch (error) {
-      console.error('❌ Error starting workflow:', error);
+      console.error('❌ Error starting voice call:', error);
       setCallStatus(CallStatus.INACTIVE);
     }
   };
 
   const handleDisconnect = () => {
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+    }
     setCallStatus(CallStatus.FINISHED);
-    // You may want to call vapi.stop() here if using vapi frontend SDK instance
   };
 
   const latestMessage = messages[messages.length - 1]?.content;
