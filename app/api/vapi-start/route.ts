@@ -1,50 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { workflowId, variableValues } = await request.json();
+    const { workflowId, variableValues } = await req.json();
 
-    if (!workflowId) {
-      return NextResponse.json(
-        { success: false, error: 'Missing workflowId' },
-        { status: 400 }
-      );
-    }
-
-    console.log('📞 Starting workflow:', workflowId);
-    console.log('📦 Variable values:', variableValues);
-
-    const vapiResponse = await fetch('https://api.vapi.ai/call/web', {
+    const res = await fetch('https://api.vapi.ai/call/web', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.VAPI_SECRET_KEY}`, // must be secret key
+        Authorization: `Bearer ${process.env.VAPI_SECRET_KEY}`, // server key
       },
       body: JSON.stringify({
-        workflow: {
-          id: workflowId,
-          variables: variableValues,
-        },
+        workflow_id: workflowId,
+        variable_values: variableValues,
       }),
     });
 
-    const data = await vapiResponse.json();
+    const result = await res.json();
 
-    if (!vapiResponse.ok) {
-      console.error('❌ Vapi API Error:', data);
-      return NextResponse.json(
-        { success: false, error: data?.error || 'Vapi API call failed' },
-        { status: vapiResponse.status }
-      );
+    if (!res.ok) {
+      return NextResponse.json({ success: false, error: result.error || 'Unknown error' }, { status: res.status });
     }
 
-    return NextResponse.json({ success: true, result: data }, { status: 200 });
-
-  } catch (error: any) {
-    console.error('❌ Internal Server Error:', error);
-    return NextResponse.json(
-      { success: false, error: error?.message || 'Server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, result });
+  } catch (error) {
+    console.error('Proxy error:', error);
+    return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
   }
 }
