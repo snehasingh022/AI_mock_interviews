@@ -4,11 +4,16 @@ export async function POST(req: NextRequest) {
   try {
     const { workflowId, variableValues } = await req.json();
 
-    const res = await fetch('https://api.vapi.ai/call/web', {
+    console.log('🔄 Proxying Vapi request with:', {
+      workflowId,
+      variableValues,
+    });
+
+    const vapiResponse = await fetch('https://api.vapi.ai/call/web', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.VAPI_SECRET_KEY}`, // server key
+        Authorization: `Bearer ${process.env.VAPI_SECRET_KEY}`,
       },
       body: JSON.stringify({
         workflow_id: workflowId,
@@ -16,15 +21,45 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const result = await res.json();
+    const result = await vapiResponse.json();
 
-    if (!res.ok) {
-      return NextResponse.json({ success: false, error: result.error || 'Unknown error' }, { status: res.status });
-    }
+    console.log('✅ Vapi API responded with:', result);
 
-    return NextResponse.json({ success: true, result });
-  } catch (error) {
-    console.error('Proxy error:', error);
-    return NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
+    const response = NextResponse.json(
+      vapiResponse.ok
+        ? { success: true, result }
+        : { success: false, error: result.error || 'Unknown error' },
+      { status: vapiResponse.status }
+    );
+
+    // Set CORS headers
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    return response;
+  } catch (error: any) {
+    console.error('❌ Proxy error calling Vapi:', error);
+
+    const response = NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
+
+    // CORS headers on error too
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    return response;
   }
+}
+
+// Optional: Handle CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }

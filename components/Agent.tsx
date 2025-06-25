@@ -23,7 +23,7 @@ interface AgentProps {
   type: string;
 }
 
-const Agent = ({ userName, userId, type }: AgentProps) => {
+const Agent = ({ userName, userId }: AgentProps) => {
   const router = useRouter();
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
@@ -38,46 +38,28 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
     try {
       setCallStatus(CallStatus.CONNECTING);
 
-      // Call your backend to start workflow (optional if using assistant directly)
-      await fetch('/api/vapi-start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflowId: process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!,
-          variableValues: {
-            userid: userId,
-            username: userName,
-          },
-        }),
-      });
-
-      // Start Vapi assistant voice call
       const vapi = new Vapi({
         apiKey: process.env.NEXT_PUBLIC_VAPI_WEB_TOKEN!,
       });
       vapiRef.current = vapi;
 
-      vapi.start({
+      await vapi.start({
         agentId: process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!,
-        customer: {
-          name: userName,
-        },
+        customer: { name: userName },
         variables: {
           userid: userId,
           username: userName,
         },
       });
 
-      // Listen for function calls from assistant
       vapi.on('function-call', async (fnCall: { name: string; args: { userid: string } }) => {
         if (fnCall.name === 'getInterviewQuestions') {
           const res = await fetch(`/api/get-questions?userid=${fnCall.args.userid}`);
           const data = await res.json();
-          vapiRef.current.functionCallResult(fnCall.name, data);
+          vapi.functionCallResult(fnCall.name, data);
         }
       });
 
-      // Listen for assistant messages
       vapi.on('message', (message: { content: string }) => {
         setMessages((prev) => [...prev, { role: 'assistant', content: message.content }]);
         setIsSpeaking(true);
@@ -92,9 +74,7 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
   };
 
   const handleDisconnect = () => {
-    if (vapiRef.current) {
-      vapiRef.current.stop();
-    }
+    if (vapiRef.current) vapiRef.current.stop();
     setCallStatus(CallStatus.FINISHED);
   };
 
@@ -130,10 +110,7 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
       {messages.length > 0 && (
         <div className="transcript-border">
           <div className="transcript">
-            <p
-              key={latestMessage}
-              className={cn('transition-opacity duration-500 opacity-0', 'animate-fadeIn opacity-100')}
-            >
+            <p key={latestMessage} className={cn('transition-opacity duration-500 opacity-0', 'animate-fadeIn opacity-100')}>
               {latestMessage}
             </p>
           </div>
@@ -143,12 +120,7 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
       <div className="w-full flex justify-center">
         {callStatus !== CallStatus.ACTIVE ? (
           <button className="relative btn-call" onClick={handleCall}>
-            <span
-              className={cn(
-                'absolute animate-ping rounded-full opacity-75',
-                callStatus !== CallStatus.CONNECTING && 'hidden'
-              )}
-            />
+            <span className={cn('absolute animate-ping rounded-full opacity-75', callStatus !== CallStatus.CONNECTING && 'hidden')} />
             <span>{isCallInactiveOrFinished ? 'Call' : '...'}</span>
           </button>
         ) : (
