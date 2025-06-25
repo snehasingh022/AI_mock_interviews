@@ -38,6 +38,20 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
     try {
       setCallStatus(CallStatus.CONNECTING);
 
+      // Call your backend to start workflow (optional if using assistant directly)
+      await fetch('/api/vapi-start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId: process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!,
+          variableValues: {
+            userid: userId,
+            username: userName,
+          },
+        }),
+      });
+
+      // Start Vapi assistant voice call
       const vapi = new Vapi({
         apiKey: process.env.NEXT_PUBLIC_VAPI_WEB_TOKEN!,
       });
@@ -54,14 +68,16 @@ const Agent = ({ userName, userId, type }: AgentProps) => {
         },
       });
 
+      // Listen for function calls from assistant
       vapi.on('function-call', async (fnCall: { name: string; args: { userid: string } }) => {
         if (fnCall.name === 'getInterviewQuestions') {
           const res = await fetch(`/api/get-questions?userid=${fnCall.args.userid}`);
           const data = await res.json();
-          vapi.functionCallResult(fnCall.name, data);
+          vapiRef.current.functionCallResult(fnCall.name, data);
         }
       });
 
+      // Listen for assistant messages
       vapi.on('message', (message: { content: string }) => {
         setMessages((prev) => [...prev, { role: 'assistant', content: message.content }]);
         setIsSpeaking(true);
