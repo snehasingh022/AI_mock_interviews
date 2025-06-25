@@ -4,12 +4,11 @@ export async function POST(req: NextRequest) {
   try {
     const { workflowId, variableValues } = await req.json();
 
-    console.log('🔄 Proxying Vapi request with:', {
-      workflowId,
-      variableValues,
-    });
+    if (!workflowId) {
+      return NextResponse.json({ success: false, error: 'Missing workflowId' }, { status: 400 });
+    }
 
-    const vapiResponse = await fetch('https://api.vapi.ai/call/web', {
+    const res = await fetch('https://api.vapi.ai/call/web', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -21,45 +20,15 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const result = await vapiResponse.json();
+    const result = await res.json();
 
-    console.log('✅ Vapi API responded with:', result);
+    if (!res.ok) {
+      return NextResponse.json({ success: false, error: result.message || 'Unknown error' }, { status: res.status });
+    }
 
-    const response = NextResponse.json(
-      vapiResponse.ok
-        ? { success: true, result }
-        : { success: false, error: result.error || 'Unknown error' },
-      { status: vapiResponse.status }
-    );
-
-    // Set CORS headers
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    return response;
-  } catch (error: any) {
-    console.error('❌ Proxy error calling Vapi:', error);
-
-    const response = NextResponse.json({ success: false, error: 'Server error' }, { status: 500 });
-
-    // CORS headers on error too
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    return response;
+    return NextResponse.json({ success: true, result });
+  } catch (error) {
+    console.error('Server Error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
-}
-
-// Optional: Handle CORS preflight
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  });
 }
