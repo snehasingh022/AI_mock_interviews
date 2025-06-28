@@ -18,23 +18,7 @@ const page = () => {
      </div>
      <Image src="/robot.png" alt="robo-dude" width={400} height={400} className='max-sm:hidden'/>
     </section>
-    <section className='flex flex-col gap-8 mt-8'>
-     <h2>Your Interviews</h2>
-     <div className='interviews-section'>
-      {dummyInterviews.map((interview)=>(
-        <InterviewCard{...interview} key={interview.id}/>
-      ))}
-     </div>
-    </section>
-    <section className='flex flex-col gap-6 mt-8'>
-     <h2>Take an Interview</h2>
-     <div className='interviews-section'>
-      {dummyInterviews.map((interview)=>(
-        <InterviewCard{...interview} key={interview.id}/>
-      ))}
-      
-     </div>
-    </section>
+  
     
     </>
   )
